@@ -1,0 +1,56 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:16
+    restart: always
+    env_file:
+      - ./.env
+    environment:
+      - POSTGRES_DB=$POSTGRES_DB
+      - POSTGRES_USER=$POSTGRES_USER
+      - POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+    ports:
+      - $POSTGRES_LOCAL_PORT:$POSTGRES_DOCKER_PORT
+    volumes:
+      - ./db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "$POSTGRES_USER"]
+      interval: 30s
+      retries: 5
+      start_period: 30s
+      timeout: 10s
+
+  api:
+    depends_on:
+      db:
+        condition: service_healthy  # Espera até o db estar saudável
+    build: ./individual
+    restart: on-failure
+    ports:
+      - $SPRING_LOCAL_PORT:$SPRING_DOCKER_PORT
+    env_file:
+      - ./.env
+    environment:
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://db:$POSTGRES_DOCKER_PORT/$POSTGRES_DB"
+      SPRING_DATASOURCE_USERNAME: "$POSTGRES_USER"
+      SPRING_DATASOURCE_PASSWORD: "$POSTGRES_PASSWORD"
+      SPRING_JPA_HIBERNATE_DDL_AUTO: "update"
+      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: "org.hibernate.dialect.PostgreSQLDialect"
+
+  frontend:
+    build:
+      context: ./moliceiro_university # Diretório onde está o seu Dockerfile do frontend
+      dockerfile: Dockerfile # O nome do Dockerfile, se for o padrão (Dockerfile), não precisa especificar
+    ports:
+      - $FRONTEND_LOCAL_PORT:$FRONTEND_DOCKER_PORT
+    environment:
+      - NODE_ENV=production
+    depends_on:
+      - api
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:$FRONTEND_DOCKER_PORT"]
+      interval: 30s
+      retries: 5
+      start_period: 30s
+      timeout: 10s
